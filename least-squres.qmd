@@ -1,0 +1,244 @@
+---
+title: "Least-Squares Analysis"
+author: "your name"
+format: html
+editor: visual
+execute:
+  cache: false
+  echo: true
+---
+
+## Getting started
+
+Load the necessary R libraries
+
+```{r results="hide"}
+library(knitr)
+library(tidyverse)
+```
+
+## Ordinary Least-Squares
+
+### Example with fake data
+
+Generate some data with known parameters:
+
+```{r}
+set.seed(12345)
+b0 <- 3.5
+b1 <- 7.2
+sigma = 10
+df <- tibble(x = seq(0, 10, length.out = 100),
+             y = b0 + b1 * x + 
+               rnorm(length(x), 0, sigma))
+```
+
+Use the `lm()` function to analyze the data using ordinary least-squares:
+
+```{r}
+fit <- lm(y ~ x, df)
+```
+
+Show a summary of the results:
+
+```{r}
+summary(fit)
+```
+
+We can extract coefficients from the fit using the `coef()` function:
+
+```{r}
+coef(fit)
+
+coef(fit)["(Intercept)"]
+coef(fit)["x"]
+```
+
+We can also get detailed information about the fit from the `summary()`
+function:
+
+```{r}
+s <- summary(fit)
+
+s$coefficients
+
+s$coefficients['x', 'Estimate']
+s$coefficients['x', 'Std. Error']
+```
+
+#### Plotting with Ordinary Least-Squares:
+
+It's always useful to plot your data and the fit. We can use the
+`geom_smooth()` function to add ordinary least-squares analysis to a plot of
+the data:
+
+```{r}
+ggplot(df, aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+```
+
+The gray area around the fitted line shows the 95% confisence interval for the
+line. This accounts for uncertainties in the intercept and slope of the line.
+
+Remember that from the definition of confidence interval, this means that if
+you performed this analysis with many different samples of data from the same
+distribution, and plotted the confidence interval for each of these analysis,
+we expect that 95% of these confidence intervals would contain the correct
+line.
+
+The correct line is determined by the distribution from which we sample the
+data, so all of the samples have the same "correct line," but each will produce
+a different estimate of the line and its confidence interval, because each
+sample only looks at a finite amount of data from the true distribution.
+
+### Ordinary Least-Squares with Real Data
+
+Now, let's load some real data. Here, I'm taking paleoclimate data that uses
+tree rings to predict summer air temperatures in the Mackenzie Delta in
+Northwestern Canada.
+
+The data comes from T.J. Porter *et al*., *Quaternary Res.* **80**, 167 (2013),
+DOI:
+[10.1016/j.yqres.2013.05.004](https://doi.org/10.1016/j.yqres.2013.05.004).
+
+```{r}
+paleo <- read_rds("tree-rings.rds")
+glimpse(paleo)
+```
+
+Fit a straight line to the data using `lm()`
+
+```{r}
+fit_paleo <- lm(t_min ~ growth_index, paleo)
+```
+
+Summarize the ordinary-least-squares fit:
+
+```{r}
+summary(fit_paleo)
+```
+
+Plot the data
+
+```{r}
+ggplot(paleo, aes(x = growth_index, y = t_min)) + 
+  geom_point() +
+  geom_smooth(method="lm") +
+  labs(x = "Tree ring growth index",
+       y = expression(paste("Minimum summer temperature (", 
+                            degree * C, ")")))
+```
+
+## General Least-Squares
+
+But what do we do if the data doesn't fall on a straight line?
+
+Load some different data. This is from measurements of ^40^Ar diffusion in
+biotite. The researchers measured diffusion of ^40^Ar in different sized
+biotite grains, at different temperatures and pressures.
+
+The data come from T.M. Harrison *et al*., *Geomchim. Geocosm. Act.* **49**,
+2461 (1985). DOI:
+[10.1016/0016-7037(85)90246-7](https://doi.org/10.1016/0016-7037(85)90246-7)
+
+```{r}
+diffus <- read_rds("argon-diffusion.rds")
+glimpse(diffus)
+```
+
+Plot the data:
+
+```{r}
+ggplot(diffus, aes(x = t, y = d)) +
+  geom_point(size = 3) + 
+  labs(x = "T(K)", y = "D (cm^2 / sec)")
+```
+
+Data points represent different grain sizees and pressures, so it would be
+helpful to use other plot attributes to show these. In the language of the
+Tidyverse and the `ggplot2` package, we call these different "aesthetics" of
+the plot.
+
+The grain sizes and pressures have distinct values. There are 4 grain sizes
+(`r unique(diffus$a) |> sort() |> combine_words()` μm) and 2 pressures
+(`r unique(diffus$P) |> sort() |> combine_words()` kbar), but R doesn't know
+what we intend, so we convert the radius (`diffus$a`) and pressure (`diffus$P`)
+to factors, which tells R that these variables have discrete values, and should
+be plotted with discrete shapes and colors:
+
+```{r}
+diffus <- diffus |> mutate(P = factor(P), a = factor(a))
+
+ggplot(diffus, aes(x = t, y = d)) + 
+  geom_point(aes(color = P, shape = a), size = 3) + 
+  scale_color_brewer(palette = "Dark2", name = "P (kbar)") + 
+  scale_shape_manual(values = c("56" = 15, "80" = 16, 
+                                "97" = 17, "202" = 18), 
+                     name = expression(paste("radius (", 
+                                             mu * m, ")"))) +
+  labs(x = "T (K)", 
+       y = expression(paste("D (", cm^2 / sec, ")")))
+
+```
+
+The data clearly don't lie along a straight line. Indeed, the physics of
+diffusion tells us that we should expect a linear relationship between
+$\log(D)$ and $1/T$.
+
+Because the actual values of $T$ are close to 1000 Kelvin, we transform the
+temperazture variable to $1000 / T$ so the values will be close to 1.
+
+```{r}
+diffus <- diffus |> mutate(t_inv = 1000 / t, 
+                           log_d = log(d))
+```
+
+Now, plot the data. I'm going to use this plot again, later, so I save it to a
+variable `p_xform`
+
+```{r}
+p_xform <- ggplot(diffus, aes(x = t_inv, y = log_d)) + 
+  geom_point(aes(color = P, shape = a), size = 3) + 
+  scale_color_brewer(palette = "Dark2", 
+                     name = "P (kbar)") + 
+  scale_shape_manual(values = c("56" = 15, "80" = 16, 
+                                "97" = 17, "202" = 18), 
+                     name = expression(paste("radius (", 
+                                             mu * m, ")"))
+                     ) +
+  labs(x = expression(paste("T (", 10^3 / K, ")")), 
+       y = expression(paste(log~D, " (", cm^2 / sec, ")")),
+       title = "Transformed Data") 
+
+p_xform
+```
+
+This looks a lot more linear, except for the high-pressure (14 kbar) data.
+
+Use `lm()` to fit the transformed data. In this way, our transformations
+convert a general least-squares problem into an ordinary least-squares problem.
+However, not all general least-squares problems can be transformed into
+ordinary least-squares, so this is a special case.
+
+$$
+\log{D} = \beta_0 + \beta_1 \frac{1000}{T} + \varepsilon
+$$
+
+```{r}
+fit_diffus <- lm(log_d ~ t_inv, diffus)
+```
+
+Now examine the summary
+
+```{r}
+summary(fit_diffus)
+```
+
+And repeat the plot, but add a least-squares analysis. Because I saved the plot
+to a variable, all I have to do is add one new layer to the plot.
+
+```{r}
+p_xform + geom_smooth(method="lm")
+```
