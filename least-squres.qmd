@@ -208,7 +208,7 @@ p_xform <- ggplot(diffus, aes(x = t_inv, y = log_d)) +
                      name = expression(paste("radius (", 
                                              mu * m, ")"))
                      ) +
-  labs(x = expression(paste("T (", 10^3 / K, ")")), 
+  labs(x = expression(paste(1 / T, " (", 10^3 / K, ")")), 
        y = expression(paste(log~D, " (", cm^2 / sec, ")")),
        title = "Transformed Data") 
 
